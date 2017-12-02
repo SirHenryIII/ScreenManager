@@ -265,6 +265,13 @@ namespace ScreenManager
         private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip,
             EnumMonitorsDelegate lpfnEnum, IntPtr dwData);
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetWindowRect(IntPtr hWnd, out RectStruct lpRect);
+
+        [DllImport("User32.dll")]
+        public extern static bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool redraw);
+
         #endregion ----- DllImports -----
 
         #region ----- P/Invoke Structs -----
