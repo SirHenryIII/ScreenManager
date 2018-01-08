@@ -50,6 +50,57 @@ namespace ScreenManager
                 new EnumMonitorsDelegate(EnumMonitorsProc), IntPtr.Zero);
         }
 
+        public static WindowInfo GetWindowInfo(IntPtr hwnd)
+        {
+            RectStruct WindowRect = new RectStruct();
+            RectStruct ExtendedFrameBounds = new RectStruct();
+            RectStruct Border = new RectStruct();
+            WindowInfo result = new WindowInfo();
+            WindowSize Size = new WindowSize();
+            WindowSize SizeExtendedFrameBounds = new WindowSize();
+
+            int size = Marshal.SizeOf(typeof(RectStruct));
+
+            if (GetWindowRect(hwnd, out WindowRect))
+            {
+                DwmGetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE.ExtendedFrameBounds, out ExtendedFrameBounds, size);
+            }
+
+            IntPtr screen = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            MonitorInfoEx currentScreen = GetScreenFromWindow(hwnd);
+
+            result.ScreenName = currentScreen.DeviceName;
+            result.ScalingFactor = getMonitorScaling(currentScreen);
+            result.hwnd = hwnd;
+
+            // Update the rectangle with the current monitor scaling
+            WindowRect.left = (int)(WindowRect.left * result.ScalingFactor);
+            WindowRect.top = (int)(WindowRect.top * result.ScalingFactor);
+            WindowRect.right = (int)(WindowRect.right * result.ScalingFactor);
+            WindowRect.bottom = (int)(WindowRect.bottom * result.ScalingFactor);
+
+            // https://stackoverflow.com/questions/34139450/getwindowrect-returns-a-size-including-invisible-borders
+            Border.left = ExtendedFrameBounds.left - WindowRect.left;
+            Border.top = ExtendedFrameBounds.top - WindowRect.top;
+            Border.right =  WindowRect.right - ExtendedFrameBounds.right;
+            Border.bottom = WindowRect.bottom - ExtendedFrameBounds.bottom;
+
+            result.WindowRect = WindowRect;
+            result.ExtendedFrameBounds = ExtendedFrameBounds;
+            result.Border = Border;
+
+            Size.height = WindowRect.bottom - WindowRect.top;
+            Size.width = WindowRect.right - WindowRect.left;
+
+            SizeExtendedFrameBounds.height = ExtendedFrameBounds.bottom - ExtendedFrameBounds.top;
+            SizeExtendedFrameBounds.width =  ExtendedFrameBounds.right - ExtendedFrameBounds.left;
+
+            result.SizeWindow = Size;
+            result.SizeExtendedFrameBounds = SizeExtendedFrameBounds;
+
+            return result;
+        }
+
         // Return the name of a screen that is nearest to the window
         public static String GetScreenNameFromWindow(IntPtr hwnd)
         {
@@ -66,6 +117,32 @@ namespace ScreenManager
             {
                 return "";
             }
+        }
+
+        public static MonitorInfoEx GetScreenFromWindow(IntPtr hwnd)
+        {
+            IntPtr hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            MonitorInfoEx mi = new MonitorInfoEx();
+            mi.Size = (uint)Marshal.SizeOf(mi);
+
+            bool success = GetMonitorInfo(hMonitor, ref mi);
+
+            return mi;
+        }
+
+        public static double getMonitorScaling(MonitorInfoEx monitor)
+        {
+            DEVMODE DeviceMode = new DEVMODE();
+            DeviceMode.Initialize();
+
+            if (EnumDisplaySettingsEx(ToLPTStr(monitor.DeviceName), -1, ref DeviceMode))
+            {
+                //si.NativeHeight = DeviceMode.dmPelsHeight;
+                //si.NativeWidth = DeviceMode.dmPelsWidth;
+                return Math.Round((double)DeviceMode.dmPelsHeight / (monitor.Monitor.bottom - monitor.Monitor.top),2);
+            }
+
+            return 1;
         }
 
         [AllowReversePInvokeCalls]
@@ -106,13 +183,32 @@ namespace ScreenManager
         {
             public String ScreenWidth { get; set; }
             public String ScreenHeight { get; set; }
+            public uint NativeWidth { get; set; }
+            public uint NativeHeight { get; set; }
             public Oblong MonitorArea { get; set; }
             public Oblong WorkArea { get; set; }
             public Boolean IsPrimaryScreen { get; set; }
             public String DeviceName { get; set; }
-            public uint NativeHeight { get; set; }
-            public uint NativeWidth { get; set; }
             public double Scaling { get; set; }
+        }
+
+        // The class that contains the screen information
+        public class WindowInfo
+        {
+            public String ScreenName { get; set; }
+            public RectStruct WindowRect { get; set; }
+            public RectStruct ExtendedFrameBounds { get; set; }
+            public RectStruct Border { get; set; }
+            public double ScalingFactor { get; set; }
+            public IntPtr hwnd { get; set; }
+            public WindowSize SizeExtendedFrameBounds { get; set; }
+            public WindowSize SizeWindow { get; set; }
+
+            public override string ToString()
+            {
+                return String.Format("({0},{1})-({2},{3})/({4},{5})-({6},{7})",
+                    this.WindowRect.left, this.WindowRect.top, this.WindowRect.right, this.WindowRect.bottom, this.ExtendedFrameBounds.left, this.ExtendedFrameBounds.top, this.ExtendedFrameBounds.right, this.ExtendedFrameBounds.bottom);
+            }
         }
 
         // Collection of screen information
@@ -272,6 +368,19 @@ namespace ScreenManager
         [DllImport("User32.dll")]
         public extern static bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool redraw);
 
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmGetWindowAttribute(IntPtr hwnd, DWMWINDOWATTRIBUTE dwAttribute, out bool pvAttribute, int cbAttribute);
+
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmGetWindowAttribute(IntPtr hwnd, DWMWINDOWATTRIBUTE dwAttribute, out RectStruct pvAttribute, int cbAttribute);
+
+        [DllImport("user32.dll")]
+        public extern static int GetDpiForWindow(IntPtr hWnd);
+
+        // When you don't want the ProcessId, use this overload and pass IntPtr.Zero for the second parameter
+        [DllImport("user32.dll")]
+        static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr ProcessId);
+
         #endregion ----- DllImports -----
 
         #region ----- P/Invoke Structs -----
@@ -328,6 +437,25 @@ namespace ScreenManager
             public int top;
             public int right;
             public int bottom;
+
+            public override string ToString()
+            {
+                return String.Format("({0},{1})-({2},{3})",
+                    this.left, this.top, this.right, this.bottom);
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct WindowSize
+        {
+            public int height;
+            public int width;
+
+            public override string ToString()
+            {
+                return String.Format("{0}x{1}",
+                    this.width, this.height);
+            }
         }
 
         // http://www.pinvoke.net/default.aspx/Structures.DEVMODE
@@ -457,6 +585,25 @@ namespace ScreenManager
         #endregion ----- P/Invoke Structs -----
 
         #region ----- enums -----
+
+        public enum DWMWINDOWATTRIBUTE : uint
+        {
+            NCRenderingEnabled = 1,
+            NCRenderingPolicy,
+            TransitionsForceDisabled,
+            AllowNCPaint,
+            CaptionButtonBounds,
+            NonClientRtlLayout,
+            ForceIconicRepresentation,
+            Flip3DPolicy,
+            ExtendedFrameBounds,
+            HasIconicBitmap,
+            DisallowPeek,
+            ExcludedFromPeek,
+            Cloak,
+            Cloaked,
+            FreezeRepresentation
+        }
 
         // Flags used with the Windows API (User32.dll):GetSystemMetrics(SystemMetric smIndex)
         //
