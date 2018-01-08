@@ -155,8 +155,6 @@ namespace ScreenManager
             if (success)
             {
                 ScreenInfo si = new ScreenInfo();
-                si.ScreenWidth = (mi.Monitor.right - mi.Monitor.left).ToString();
-                si.ScreenHeight = (mi.Monitor.bottom - mi.Monitor.top).ToString();
                 si.MonitorArea = Oblong.FromRectStruct(mi.Monitor);
                 si.WorkArea = Oblong.FromRectStruct(mi.WorkArea);
                 si.DeviceName = mi.DeviceName;
@@ -167,10 +165,11 @@ namespace ScreenManager
 
                 if (EnumDisplaySettingsEx(ToLPTStr(mi.DeviceName), -1, ref DeviceMode))
                 {
-                    si.NativeHeight = DeviceMode.dmPelsHeight;
-                    si.NativeWidth = DeviceMode.dmPelsWidth;
                     si.Scaling = Math.Round(((double)DeviceMode.dmPelsHeight / (mi.Monitor.bottom - mi.Monitor.top)) * 100);
                 }
+
+                si.NativeWorkArea = new Oblong((int)(mi.WorkArea.left * si.Scaling)/100, (int)(mi.WorkArea.top * si.Scaling)/100, (int)(mi.WorkArea.right * si.Scaling)/100, (int)(mi.WorkArea.bottom * si.Scaling)/100);
+                si.NativeArea = new Oblong((int)(mi.Monitor.left * si.Scaling)/100, (int)(mi.Monitor.top * si.Scaling)/100, (int)(mi.Monitor.right * si.Scaling)/100, (int)(mi.Monitor.bottom * si.Scaling)/100);
 
                 Display.Screens.Add(si);
             }
@@ -181,15 +180,13 @@ namespace ScreenManager
         // The class that contains the screen information
         public class ScreenInfo
         {
-            public String ScreenWidth { get; set; }
-            public String ScreenHeight { get; set; }
-            public uint NativeWidth { get; set; }
-            public uint NativeHeight { get; set; }
             public Oblong MonitorArea { get; set; }
             public Oblong WorkArea { get; set; }
             public Boolean IsPrimaryScreen { get; set; }
             public String DeviceName { get; set; }
             public double Scaling { get; set; }
+            public Oblong NativeWorkArea { get; set; }
+            public Oblong NativeArea { get; set; }
         }
 
         // The class that contains the screen information
